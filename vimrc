@@ -154,7 +154,7 @@ xnoremap <S-Tab> <gv
 nnoremap <C-a>   ggVG
 " :q! on a single key was dangerous; <Leader>q now asks when unsaved,
 " <Leader>Q is the old discard-and-quit.
-nnoremap <silent> <Leader>q :q<CR>
+nnoremap <silent> <Leader>q :q!<CR>
 nnoremap <silent> <Leader>Q :q!<CR>
 
 " --- options / toggles  (<Leader>o...) ---
