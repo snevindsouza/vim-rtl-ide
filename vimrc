@@ -1,5 +1,5 @@
 " ============================================================================
-" ~/.vimrc  --  Plugin-free, server-friendly Vim IDE for Verilog / SystemVerilog / VHDL
+" ~/.vimrc  --  Plugin-free Vim IDE for Verilog / SystemVerilog / VHDL
 "
 " Layout:
 "   ~/.vimrc                  this file: core options + global mappings

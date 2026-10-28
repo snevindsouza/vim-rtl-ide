@@ -250,8 +250,9 @@ Inserts a matching `end` on the line below and leaves the cursor on an
 indented empty line between them, only when the popup menu is closed, the
 line before the cursor ends with `begin` (or `begin : label`), nothing
 follows the cursor, the cursor is not in a comment/string, and the
-begin/end balance from here to the end of the buffer (max 2000 lines) is
-still positive.  Everything else is a normal <CR>.  It is one insert
+begin/end balance of the enclosing module scope (nearest module line
+above to its endmodule below, max 5000 lines each way) is positive, i.e.
+this begin has no end yet.  Nested begins therefore get their own end.  Everything else is a normal <CR>.  It is one insert
 session, so `u` undoes the whole thing.  Disable with
 let g:rtl_auto_end = 0  or 'paste'.  Not applied in VHDL.
 

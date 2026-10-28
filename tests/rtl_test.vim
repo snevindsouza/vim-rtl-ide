@@ -237,35 +237,52 @@ function! s:T09(id, desc) abort
   enew!
   set filetype=verilog
   let g:rtl_lsp_autostart = 0
+  " the handler reads the cursor as it is in insert mode (after the last
+  " character); emulate that from normal mode with virtualedit
+  let save_ve = &virtualedit
+  set virtualedit=onemore
   " 1. begin without end -> inserts
   call setline(1, ['always @* begin', '  x = 1;', 'endmodule'])
-  call cursor(1, 1) | normal! $
+  call cursor(1, col([1, '$']))
   let r1 = rtl#edit#CR()
   " 2. begin already closed -> plain CR
   call setline(1, ['always @* begin', '  x = 1;', 'end', 'endmodule'])
-  call cursor(1, 1) | normal! $
+  call cursor(1, col([1, '$']))
   let r2 = rtl#edit#CR()
   " 3. word 'begin' in a comment -> plain CR (needs syntax)
   call setline(1, ['// this is a begin', 'endmodule'])
   syntax enable
-  call cursor(1, 1) | normal! $
+  call cursor(1, col([1, '$']))
   let r3 = rtl#edit#CR()
   " 4. text after the cursor -> plain CR
   call setline(1, ['if (a) begin x = 1; end', 'endmodule'])
-  call cursor(1, 8)
+  call cursor(1, 13)
   let r4 = rtl#edit#CR()
   " 5. named block
   call setline(1, ['if (a) begin : blk', 'endmodule'])
-  call cursor(1, 1) | normal! $
+  call cursor(1, col([1, '$']))
   let r5 = rtl#edit#CR()
+  " 6. nested begin inside an already closed outer block -> inserts
+  call setline(1, ['module m;', 'always @* begin', '  if (a) begin', 'end', 'endmodule'])
+  call cursor(3, col([3, '$']))
+  let r7 = rtl#edit#CR()
+  " 7. nested begin whose own end exists -> plain CR
+  call setline(1, ['module m;', 'always @* begin', '  if (a) begin', '  end', 'end', 'endmodule'])
+  call cursor(3, col([3, '$']))
+  let r8 = rtl#edit#CR()
+  let &virtualedit = save_ve
   " 6. end-to-end through the mapping with feedkeys (best effort in -es)
   %delete _
   call setline(1, ['module m;', 'endmodule'])
   call cursor(1, 1)
   let r6 = ''
+  let g:rtl_test_cr_trace = []
+  let mapinfo = maparg('<CR>', 'i', 0, 1)
   try
     call feedkeys("oalways @* begin\<CR>x = 1;\<Esc>", 'xt')
-    let r6 = string(getline(1, '$'))
+    let r6 = string(getline(1, '$')) . ' trace=' . string(g:rtl_test_cr_trace)
+          \ . ' map=' . string(get(mapinfo, 'rhs', '')) . '/buffer=' . get(mapinfo, 'buffer', -1)
+          \ . ' fterr=' . get(b:, 'rtl_ftplugin_error', '')
   catch
     let r6 = 'feedkeys-exception'
   endtry
@@ -273,13 +290,15 @@ function! s:T09(id, desc) abort
         \ || getline(1, '$') ==# ['module m;', 'always @* begin', '  x = 1;', 'end', 'endmodule']
         \ || (getline(1, '$') ==# ['module m;', 'always @* begin', 'x = 1;', 'end', 'endmodule'])
   let ok = r1 ==# "\<CR>end\<C-o>O" && r2 ==# "\<CR>" && r3 ==# "\<CR>" && r4 ==# "\<CR>"
-        \ && r5 ==# "\<CR>end\<C-o>O"
+        \ && r5 ==# "\<CR>end\<C-o>O" && r7 ==# "\<CR>end\<C-o>O" && r8 ==# "\<CR>"
+  unlet g:rtl_test_cr_trace
   bwipeout!
   " e2e through feedkeys is best-effort in -es mode; the function-level
   " checks decide, the e2e result is reported for the interactive check
   call s:Check(a:id, a:desc, ok,
-        \ printf('insert=%d closed=%d comment=%d midline=%d named=%d feedkeys-e2e=%d buffer=%s',
-        \ r1 ==# "\<CR>end\<C-o>O", r2 ==# "\<CR>", r3 ==# "\<CR>", r4 ==# "\<CR>", r5 ==# "\<CR>end\<C-o>O", e2e, r6))
+        \ printf('insert=%d closed=%d comment=%d midline=%d named=%d nested=%d nested-closed=%d feedkeys-e2e=%d(informational: -es feeds the <CR> before the last typed char lands) buffer=%s',
+        \ r1 ==# "\<CR>end\<C-o>O", r2 ==# "\<CR>", r3 ==# "\<CR>", r4 ==# "\<CR>", r5 ==# "\<CR>end\<C-o>O",
+        \ r7 ==# "\<CR>end\<C-o>O", r8 ==# "\<CR>", e2e, r6))
 endfunction
 call s:Run('T09', 'Enter handler: inserts end once, never in comments/closed/mid-line', function('s:T09'))
 
@@ -319,11 +338,13 @@ function! s:T11(id, desc) abort
   enew!
   set filetype=verilog
   set filetype=verilog
+  let mi = maparg('<CR>', 'i', 0, 1)
+  let m = (get(mi, 'buffer', 0) && get(mi, 'rhs', '') =~# 'rtl#edit#CR') ? 1 : 0
   let maps = ''
   redir => maps
-  silent imap <buffer> <CR>
+  silent imap <buffer>
   redir END
-  let m = len(filter(split(maps, '\n'), 'v:val =~# "rtl#edit#CR"'))
+  let m_listed = len(filter(split(maps, '\n'), 'v:val =~# "rtl#edit#CR"'))
   let b = 0
   if exists('#RtlLspBuf')
     let bau = ''
@@ -333,15 +354,17 @@ function! s:T11(id, desc) abort
     let b = len(filter(split(bau, '\n'), 'v:val =~# "OnEnter"'))
   endif
   bwipeout!
-  call s:Check(a:id, a:desc, n == 1 && m == 1 && (b <= 1),
-        \ printf('RtlIde FileType entries=%d, <CR> mappings=%d, buffer BufEnter autocmds=%d', n, m, b))
+  call s:Check(a:id, a:desc, n == 1 && m == 1 && m_listed == 1 && (b <= 1),
+        \ printf('RtlIde FileType entries=%d, <CR> maparg=%d listed=%d, buffer BufEnter autocmds=%d, did_rtl=%d fterr=%s',
+        \ n, m, m_listed, b, exists('b:did_rtl_ftplugin'), get(b:, 'rtl_ftplugin_error', '')))
 endfunction
 call s:Run('T11', 'repeated sourcing: no duplicate autocommands or mappings', function('s:T11'))
 
 " T12 ---------------------------------------------------------------------
 function! s:T12(id, desc) abort
   let rtp = &runtimepath
-  let bad = rtp =~# 'plugged\|bundle\|pack/\|dein\|vim-plug'
+  let rtp_user = join(filter(split(rtp, ','), 'v:val !~# "pack/dist/"'), ',')
+  let bad = rtp_user =~# 'plugged\|bundle\|pack/\|dein\|vim-plug'
   let plugdir = !empty(globpath(expand('~/.vim'), 'plugin/*.vim')) || isdirectory(expand('~/.vim/pack'))
   let scripts = ''
   redir => scripts
@@ -349,7 +372,7 @@ function! s:T12(id, desc) abort
   redir END
   let foreign = filter(split(scripts, '\n'), 'v:val !~# "/\\.vim/\\|\\$VIM\\|/usr/\\|/opt/\\|/snap/\\|vimrc\\|rtl_test\\|/vim/\\|/nix/"')
   call s:Check(a:id, a:desc, !bad && !plugdir,
-        \ 'rtp has no plugin manager dirs, ~/.vim has no plugin/ or pack/; foreign scripts: ' . string(foreign))
+        \ 'rtp (minus Vim''s own pack/dist matchit) has no plugin dirs; ~/.vim has no plugin/ or pack/; foreign scripts: ' . string(foreign))
 endfunction
 call s:Run('T12', 'no plugins or plugin managers in use', function('s:T12'))
 

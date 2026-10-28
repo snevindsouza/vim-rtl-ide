@@ -44,7 +44,7 @@ rc=$?
 bk=$(ls -d "$FAKEHOME"/.vim-rtl-ide-backup-* 2>/dev/null | head -n 1)
 if [ $rc -eq 0 ] && [ -n "$bk" ] && grep -q 'pre-existing user vimrc' "$bk/.vimrc" \
    && [ -f "$FAKEHOME/.vim/rtl-ide.manifest" ] \
-   && grep -q 'plugin-free Vim IDE' "$FAKEHOME/.vimrc" \
+   && grep -qi 'plugin-free Vim IDE' "$FAKEHOME/.vimrc" \
    && [ -f "$FAKEHOME/.vim/plugin-unrelated/keep.vim" ]; then
   echo "PASS T13  installer backs up ~/.vimrc, writes manifest, leaves unrelated files ($bk)"
 else

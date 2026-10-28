@@ -1,0 +1,5 @@
+# fixture project configuration
+src_dirs     = .
+include_dirs = .
+filelist     = filelist.f
+top          = top

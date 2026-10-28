@@ -6,9 +6,8 @@
 "     - the text before the cursor ends with  begin  or  begin : label,
 "     - the cursor is not inside a comment or string (syntax check),
 "     - nothing but whitespace follows the cursor on the line,
-"     - the block is not already closed: counting begin/end from the current
-"       line to the end of the buffer (bounded to 2000 lines) shows more
-"       begins than ends.
+"     - the block is not already closed: the begin/end balance of the
+"       enclosing module scope (bounded to 5000 lines each way) is positive.
 "   Otherwise it is a plain <CR>.  The inserted text is typed as part of the
 "   same insert session, so a single undo removes it with the Enter.
 "
@@ -33,26 +32,41 @@ function! s:InCommentOrString() abort
 endfunction
 
 " Does the begin on the current line still lack its end?
+" Counts begin/end over the enclosing module scope (nearest module/
+" interface/package line above, matching end* below; each bounded to 5000
+" lines).  A positive balance means at least one begin -- the one just
+" typed -- has no end.  Counting only forward from the cursor was wrong:
+" a nested begin would "see" the outer block's end and never close.
 function! s:NeedsEnd() abort
+  let cur = line('.')
+  let start = max([1, cur - 5000])
+  for l in range(cur - 1, start, -1)
+    if getline(l) =~# '\C^\s*\%(module\|macromodule\|interface\|package\|program\)\>'
+      let start = l
+      break
+    endif
+  endfor
+  let stop = min([line('$'), cur + 5000])
+  for l in range(cur + 1, stop)
+    if getline(l) =~# '\C^\s*end\%(module\|interface\|package\|program\)\>'
+      let stop = l
+      break
+    endif
+  endfor
   let depth = 0
-  let last = min([line('$'), line('.') + 2000])
-  for l in getline(line('.'), last)
+  for l in getline(start, stop)
     let l = substitute(l, '//.*$', '', '')
     let l = substitute(l, '"[^"]*"', '', 'g')
     let depth += len(split(l, '\C\<begin\>', 1)) - 1
     let depth -= len(split(l, '\C\<end\>', 1)) - 1
-    " a module/task/function boundary ends the search
-    if depth <= 0
-      return 0
-    endif
-    if l =~# '\C^\s*end\%(module\|task\|function\|generate\)\>'
-      break
-    endif
   endfor
   return depth > 0
 endfunction
 
 function! rtl#edit#CR() abort
+  if exists('g:rtl_test_cr_trace')   " used only by tests/rtl_test.vim
+    call add(g:rtl_test_cr_trace, [getline('.'), col('.'), mode()])
+  endif
   if pumvisible()
     return "\<C-y>"
   endif

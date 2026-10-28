@@ -124,8 +124,8 @@ function! rtl#ft#Setup(lang) abort
         \ . '|silent! iunmap <buffer> <C-Space>|silent! iunmap <buffer> <C-@>'
         \ . '|silent! iunmap <buffer> <Tab>|silent! iunmap <buffer> <S-Tab>'
         \ . '|silent! iunmap <buffer> <CR>|silent! nunmap <buffer> K'
-        \ . '|silent! autocmd! RtlLspBuf * <buffer>'
         \ . '|unlet! b:did_rtl_ftplugin b:rtl_comment_leader b:verilog_indent_modules b:systemverilog_indent_modules'
+        \ . '|execute "silent! autocmd! RtlLspBuf * <buffer>"'
 endfunction
 
 let &cpo = s:save_cpo | unlet s:save_cpo
