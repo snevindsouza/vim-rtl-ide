@@ -1,4 +1,4 @@
-# vim-rtl-ide — a plugin-free Vim IDE for Verilog / SystemVerilog / VHDL
+# vim-rtl-ide — a plugin-free, server-friendly Vim IDE for Verilog / SystemVerilog / VHDL
 
 Stock Vim, Vimscript only, installs into `$HOME` without root, works over
 SSH/PuTTY, degrades gracefully when optional tools are absent.
