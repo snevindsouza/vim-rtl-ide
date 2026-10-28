@@ -1,0 +1,22 @@
+`timescale 1ns / 1ps
+
+module tb_{{name}};
+
+  reg {{clk}} = 1'b0;
+  reg {{rst}};
+
+  always #5 {{clk}} = ~{{clk}};
+
+  {{cursor}}// DUT
+
+  initial begin
+    $dumpfile("tb_{{name}}.vcd");
+    $dumpvars(0, tb_{{name}});
+    {{rst}} = {{rst_assert}};
+    repeat (4) @(posedge {{clk}});
+    {{rst}} = {{rst_deassert}};
+    repeat (100) @(posedge {{clk}});
+    $finish;
+  end
+
+endmodule

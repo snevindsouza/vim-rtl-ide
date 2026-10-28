@@ -1,0 +1,27 @@
+localparam [1:0] S_IDLE = 2'd0,
+                 S_RUN  = 2'd1,
+                 S_DONE = 2'd2;
+
+reg [1:0] state, state_nxt;
+
+always @(posedge {{clk}} or {{rst_edge}} {{rst}}) begin
+  if ({{rst_active}})
+    state <= S_IDLE;
+  else
+    state <= state_nxt;
+end
+
+always @* begin
+  state_nxt = state;
+  case (state)
+    S_IDLE: begin
+      {{cursor}}
+    end
+    S_RUN: begin
+    end
+    S_DONE: begin
+      state_nxt = S_IDLE;
+    end
+    default: state_nxt = S_IDLE;
+  endcase
+end

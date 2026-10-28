@@ -1,0 +1,29 @@
+//------------------------------------------------------------------------------
+// {{name}}.v
+// Author : {{user}}    Date : {{date}}
+// Description :
+//------------------------------------------------------------------------------
+`default_nettype none
+
+module {{name}} #(
+  parameter integer WIDTH = 8
+) (
+  input  wire             {{clk}},
+  input  wire             {{rst}},
+  input  wire [WIDTH-1:0] din,
+  output reg  [WIDTH-1:0] dout
+);
+
+  {{cursor}}
+
+  always @(posedge {{clk}} or {{rst_edge}} {{rst}}) begin
+    if ({{rst_active}}) begin
+      dout <= {WIDTH{1'b0}};
+    end else begin
+      dout <= din;
+    end
+  end
+
+endmodule
+
+`default_nettype wire

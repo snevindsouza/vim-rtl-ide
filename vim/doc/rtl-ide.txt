@@ -1,0 +1,350 @@
+*rtl-ide.txt*  Plugin-free Vim IDE for Verilog / SystemVerilog / VHDL
+
+                        RTL IDE for Vim                         *rtl-ide*
+
+1. Overview ....................................... |rtl-ide-overview|
+2. Key mappings ................................... |rtl-ide-keys|
+3. Commands ....................................... |rtl-ide-commands|
+4. Completion ..................................... |rtl-ide-completion|
+5. Navigation and tags ............................ |rtl-ide-navigation|
+6. Diagnostics / lint ............................. |rtl-ide-lint|
+7. Language server (LSP) .......................... |rtl-ide-lsp|
+8. Editing helpers and templates .................. |rtl-ide-editing|
+9. Project configuration .......................... |rtl-ide-project|
+10. Settings ...................................... |rtl-ide-settings|
+11. What is and is not semantic ................... |rtl-ide-honesty|
+
+==============================================================================
+1. OVERVIEW                                                 *rtl-ide-overview*
+
+Everything is stock Vim 7.4+/8.0+ Vimscript under ~/.vim/autoload/rtl/.
+No plugin manager, no Neovim, no Python/Node.  Optional external tools
+(ctags, verilator, iverilog, verible, ghdl, a language server) add
+capabilities; when they are missing the corresponding command says so and
+the rest keeps working.  Run |:RtlDoctor| to see what this machine has.
+
+The leader is <Space>.  All commands start with :Rtl so  :Rtl<Tab>  lists
+them.  Mappings marked (b) are buffer-local to verilog/systemverilog/vhdl.
+
+==============================================================================
+2. KEY MAPPINGS                                                 *rtl-ide-keys*
+
+General (kept from the original configuration unless noted)~
+  <Space>s        :w                             save
+  <Space>q        :q                             quit (asks if unsaved)
+  <Space>Q        :q!                            quit, discard changes
+  <Space>n        toggle number/relativenumber
+  <Space>p        toggle 'paste' (left automatically on InsertLeave)
+  <Space>z        strip leading whitespace in the whole file
+  <Space>y        (visual) copy to local clipboard via OSC52
+  <Tab> / <S-Tab> (visual) indent / unindent and reselect
+  <C-a>           select all (note: shadows Vim's increment in normal mode)
+
+Options (<Space>o...)~
+  <Space>oi       toggle automatic indentation (for pasting / fighting indent)
+  <Space>ol       toggle 'list'      <Space>oh  clear search highlight
+  <Space>ow       toggle 'wrap'      <Space>os  toggle spell
+
+Files, buffers, windows~
+  <Space>fe       toggle netrw tree at the project root
+  <Space>ff       :RtlFind <name>   open a project file by name (<Tab> completes)
+  <Space>fg       :RtlGrep <pattern>   search the project (quickfix)
+  <Space>fw       grep the word under the cursor in the project
+  <Space>fb       :ls then :b       list buffers and switch
+  ]b  [b          next / previous buffer
+  <Space>bd       delete buffer     <Space>ba  alternate buffer
+  <Space>wv/ws    vertical / horizontal split
+  <Space>wh/j/k/l move between windows   <Space>wo only   <Space>wc close
+  <Space>w=       equalize windows
+  <Space>r        :%s/\<word\>//gc  replace word under cursor, with confirm
+
+Quickfix / location list~
+  <Space>co / cc  open / close quickfix     ]q [q  next / previous entry
+  <Space>lo / lc  open / close loclist      ]l [l  next / previous entry
+  q (in list)     close the list window
+
+Completion (insert mode, b)~
+  <C-Space> or <C-@>   omni completion (|rtl-ide-completion|)
+  <Tab>           after an identifier/`.`: omni completion; else a Tab
+  <S-Tab>         previous match (when the menu is open)
+  <C-n> <C-p>     Vim keyword completion (buffers + dictionary + tags)
+  <C-x><C-k>      dictionary (keywords)    <C-x><C-]> tags    <C-x><C-f> files
+  <CR>            accepts the selected entry when the menu is open
+
+Navigation (b)~
+  <Space>gd       :RtlDefinition  (LSP > tags > buffer declaration)
+  <Space>gr       :RtlReferences  (LSP > project word search)
+  <Space>gi       :RtlInstances   find instantiations of the module under cursor
+  <Space>gs       :RtlSymbols     document outline (LSP)
+  <Space>gn       :RtlRename      rename symbol (LSP)
+  <Space>gp       preview tag under cursor (:ptjump)
+  <Space>gf / gf  open `include file (uses project include dirs)
+  K               :RtlHover       hover (LSP)
+  <C-]> <C-t> g]  Vim's own tag jump / back / select
+  %               begin/end, module/endmodule, case/endcase (matchit)
+
+Diagnostics (b)~
+  <Space>ll       :RtlLint         lint the current file
+  <Space>lp       :RtlLintProject  lint the whole project / filelist
+  <Space>ld       :RtlDiagnostics  show diagnostics list
+  <Space>lx       :RtlClearDiagnostics
+  <Space>lf       :RtlFormat       format buffer through the LSP (explicit only)
+
+Templates (b)~
+  <Space>it       :RtlTemplate     choose a template
+  <Space>im       :RtlModule       module / entity skeleton
+  <Space>ii       :RtlInstantiate  instantiate module under cursor
+  <Space>ia       always_ff / process_sync   <Space>ic  always_comb / process_comb
+  <Space>is       case template
+  <Space>/        toggle line comment (normal) / selected lines (visual)
+
+Project / help~
+  <Space>tg       :RtlTags        (re)generate the tags file
+  <Space>hd       :RtlDoctor      capability report
+  <Space>hh       :help rtl-ide   <Space>hk  this key table
+
+==============================================================================
+3. COMMANDS                                                 *rtl-ide-commands*
+
+:RtlLint [tool]            *:RtlLint*
+    Lint the current file with `tool` (verilator|iverilog|verible|ghdl) or
+    the configured/first available one.  Results go to the quickfix list
+    with signs in the gutter.  Asynchronous with +job.
+:RtlLintProject [tool]     *:RtlLintProject*
+    Same for the whole project: uses the project filelist (.f) when one is
+    configured or found, otherwise every source file found under the
+    source directories.  `top` from .rtlproject is passed to verilator
+    (--top-module) and iverilog (-s).
+:RtlDiagnostics            show the location list (LSP) or quickfix (lint)
+:RtlClearDiagnostics       clear lists and signs
+:RtlTags                   *:RtlTags*
+    Write <root>/tags with ctags if available, else with the built-in
+    indexer.  Automatically added to 'tags' for project buffers.
+:RtlRoot                   print the detected project root
+:RtlRefresh                rescan the project file list and config
+:RtlFiles                  list all project source files in quickfix
+:RtlFind {name}            open a project file by (partial) name
+:RtlGrep {pattern}         |:vimgrep| over the project file list
+:RtlInstances [module]     quickfix of instantiation sites of a module
+:RtlDefinition / :RtlReferences / :RtlHover / :RtlSymbols
+:RtlRename [newname] / :RtlFormat         see |rtl-ide-lsp|
+:RtlInstantiate [module]   *:RtlInstantiate*
+    Insert an instantiation with all parameters and ports (named
+    connections, aligned, with direction comments).  The module is found
+    via tags, open buffers, or the project files.  If the cursor line is
+    just the module name, it is replaced.
+:RtlModule [name]          module/entity skeleton (fills an empty buffer)
+:RtlTemplate [name]        insert a template (see |rtl-ide-editing|)
+:RtlLspStart / :RtlLspStop / :RtlLspStatus / :RtlLspLog
+:RtlDoctor                 *:RtlDoctor*  report features, tools, project
+:RtlKeys                   this help, key section
+
+==============================================================================
+4. COMPLETION                                             *rtl-ide-completion*
+
+Omni completion (<C-Space>, <Tab> after a word, or <C-x><C-o>) merges:
+
+  [LSP]    textDocument/completion, only if the running server advertises
+           completionProvider (Verible's server does not; veridian does).
+  [port]   inside  mod inst ( .|   -> the ports of `mod`, parsed from its
+           header (ANSI or classic style), with direction and range.
+  [param]  inside  mod #( .|        -> the parameters of `mod` with defaults.
+  [sig]    declarations in the current buffer: ports, nets, regs, params,
+           tasks, functions, typedefs, `defines.
+  [buf]    the same from other loaded RTL buffers.
+  [tag]    modules/tasks/functions/… from the project tags file.
+  [kw]     keywords, directives and system tasks from ~/.vim/dict/.
+  [inc]    after  `include "   -> project file names.
+
+After a `.` only ports/params are offered.  Results are prefix matches
+first, then substring matches, case-insensitive.  Nothing scans the file
+system during completion: buffer scans are cached per 'changedtick' and
+project data comes from the tags file.  For project-wide names run
+|:RtlTags| once (and again after adding modules).
+
+==============================================================================
+5. NAVIGATION AND TAGS                                    *rtl-ide-navigation*
+
+:RtlTags (<Space>tg) indexes the project.  With Universal Ctags you get
+modules, ports, nets, regs, params, tasks, functions, typedefs (Verilog,
+SystemVerilog, VHDL); Exuberant Ctags covers Verilog and VHDL; without
+ctags the built-in indexer emits modules, interfaces, packages, tasks,
+functions, params, ports, nets, regs, typedefs and `defines, plus VHDL
+entities, architectures, components, signals, constants, types,
+procedures, functions and labelled processes.
+
+<Space>gd tries, in order: LSP definition, tags (:tjump, shows a list on
+several matches), a declaration search in the current buffer, and a
+module search over project files.  <C-t> / `` go back.
+
+<Space>gr: LSP references when available, otherwise a whole-word text
+search over all project files - the quickfix title says which one it is.
+<Space>gi finds instantiation sites of a module by pattern.
+
+Project root: the nearest directory upward containing one of
+g:rtl_root_markers (.rtlproject, .git, .hg, .svn, filelist.f, or an rtl/
+or hdl/ directory).  Fallback: the file's directory.  'path' is set from
+the project so gf and :find work on `include files.
+
+==============================================================================
+6. DIAGNOSTICS / LINT                                           *rtl-ide-lint*
+
+  tool       what it catches                               scope
+  verilator  syntax, undeclared identifiers, width, port    file / project
+             connection mismatches, unused/undriven, latch  (-Wall by default)
+  iverilog   syntax + elaboration errors (-t null)          file / project
+  verible    syntax errors + style rules (parser only: no   file / project
+             undeclared-identifier or width checks)
+  ghdl       VHDL syntax (-s)                               file / project
+
+Missing begin/end, module/endmodule and similar structural mistakes are
+syntax errors to all of these tools.  None of this replaces simulation,
+synthesis lint or CDC checks.  Linting a single file of a multi-file
+design reports "module not found" for sub-modules; use :RtlLintProject
+with a filelist or include_dirs/src_dirs for that.
+
+Output goes to the quickfix list (]q [q, <Space>co) with signs in the
+gutter, and the statusline shows E<n> W<n>.  Jobs run asynchronously
+when Vim has +job; otherwise Vim blocks until the tool finishes.
+
+==============================================================================
+7. LANGUAGE SERVER                                               *rtl-ide-lsp*
+
+A real LSP client (JSON-RPC over stdio with Content-Length framing,
+request ids, initialize/shutdown, full-text didChange debounced by
+timer) lives in ~/.vim/autoload/rtl/lsp.vim.  It needs Vim 8.0+ with
++job and +channel and starts automatically when a verilog/systemverilog
+or vhdl buffer is opened and a server is found.
+
+  verilog group:  verible-verilog-ls (Verible), veridian, svls
+  vhdl group:     vhdl_ls (rust_hdl), ghdl-ls
+  override:       g:rtl_lsp_command / g:rtl_lsp_command_vhdl, or
+                  lsp_command / lsp_command_vhdl in .rtlproject
+
+Implemented client features and the server capability each checks:
+  diagnostics   publishDiagnostics -> location list, signs, statusline
+  K             hover            (hoverProvider)
+  <Space>gd     definition       (definitionProvider)
+  <Space>gr     references       (referencesProvider)
+  <Space>gs     documentSymbol   (documentSymbolProvider)
+  <Space>gn     rename           (renameProvider)   applies WorkspaceEdit
+  <Space>lf     formatting       (documentFormattingProvider) - only when
+                you ask; never on save
+  omni [LSP]    completion       (completionProvider)
+
+What a given server provides is reported by :RtlLspStatus after it has
+started; a request for an unsupported capability prints a message
+instead of failing.  :RtlLspLog shows the protocol log.  Requests are
+synchronous with a timeout (g:rtl_lsp_timeout_ms, default 3000 ms);
+notifications (diagnostics) arrive asynchronously.
+
+Not implemented: incremental sync, snippets, code actions, workspace
+symbols, semantic tokens, signature help, dynamic registration.  Those
+are not needed for the features above.
+
+==============================================================================
+8. EDITING HELPERS AND TEMPLATES                             *rtl-ide-editing*
+
+Enter after `begin` (Verilog/SV)~
+Inserts a matching `end` on the line below and leaves the cursor on an
+indented empty line between them, only when the popup menu is closed, the
+line before the cursor ends with `begin` (or `begin : label`), nothing
+follows the cursor, the cursor is not in a comment/string, and the
+begin/end balance from here to the end of the buffer (max 2000 lines) is
+still positive.  Everything else is a normal <CR>.  It is one insert
+session, so `u` undoes the whole thing.  Disable with
+let g:rtl_auto_end = 0  or 'paste'.  Not applied in VHDL.
+
+Comments~
+<Space>/ toggles `// ` (or `-- ` in VHDL) at the common indentation of
+the line(s); a count works too (3<Space>/).  Uncommenting keeps indent.
+
+Indentation~
+Vim's own indent/verilog.vim, indent/systemverilog.vim and indent/vhdl.vim
+handle nested begin/end, case, generate etc.  `=` re-indents (e.g. gg=G).
+<Space>oi switches automatic indentation off/on for a buffer.
+
+Templates~
+Files in ~/.vim/templates/<filetype>/<name>.tmpl (systemverilog falls back
+to verilog).  Verilog: module, always_ff, always_ff_sync, always_comb,
+case, generate, function, task, fsm, tb, header.  VHDL: entity,
+process_sync, process_comb, case, header.  Placeholders: {{name}} {{clk}}
+{{rst}} {{rst_active}} {{rst_edge}} {{rst_assert}} {{rst_deassert}}
+{{rst_vhdl}} {{file}} {{date}} {{user}} {{cursor}}.  Clock/reset names:
+g:rtl_clk_name (clk), g:rtl_rst_name (rst_n; a trailing n/_n/_b means
+active-low).  Add your own .tmpl files; they appear in :RtlTemplate.
+
+Paste from a local machine~
+<Space>p toggles 'paste' (statusline shows PASTE); it is turned off again
+when you leave insert mode.  Vim 8.0.0210+ also handles bracketed paste
+automatically in xterm-compatible terminals.
+
+==============================================================================
+9. PROJECT CONFIGURATION                                     *rtl-ide-project*
+
+Optional <root>/.rtlproject (parsed as key = value, never executed): >
+    src_dirs      = rtl, tb
+    include_dirs  = rtl/include
+    extensions    = v, sv, svh, vh
+    exclude_dirs  = sim_out, ip_cache
+    filelist      = sim/filelist.f
+    top           = top_module
+    defines       = SYNTHESIS, WIDTH=16
+    lint_tool     = verilator
+    verilator_args = -Wall -Wno-fatal -Wno-UNUSED
+    iverilog_args  = -g2012
+    verible_lint_args = --rules=-line-length
+    ghdl_args      = --std=08
+    lsp_command    = verible-verilog-ls
+    max_files      = 20000
+<
+Filelists use the simulator syntax: one file per line, +incdir+dir,
++define+X, -f other.f, // or # comments, $ENV expansion.  verilator and
+iverilog receive the .f directly (-f); verible and ghdl get the expanded
+file list.  Files ending in .f/.flist/.vc get filetype rtlfilelist where
+gf opens the listed file.
+
+==============================================================================
+10. SETTINGS                                                 *rtl-ide-settings*
+
+Put overrides in ~/.vimrc.local (sourced at the end of ~/.vimrc, never
+touched by the installer).
+
+  g:rtl_root_markers     ['.rtlproject','.git','.hg','.svn','filelist.f','rtl','hdl']
+  g:rtl_extensions       ['v','vh','sv','svh','vhd','vhdl']
+  g:rtl_exclude_dirs     ['.git','obj_dir','build','work','sim_build',...]
+  g:rtl_cache_seconds    300    file-list cache lifetime
+  g:rtl_max_files        20000
+  g:rtl_lint_tool        ''     '' = auto (verilator > iverilog > verible)
+  g:rtl_verilator_args   '-Wall -Wno-fatal -Wno-DECLFILENAME'
+  g:rtl_iverilog_args    '-g2012'
+  g:rtl_verible_lint_args ''
+  g:rtl_ghdl_args        '--std=08'
+  g:rtl_verilator_exe / g:rtl_iverilog_exe / g:rtl_verible_lint_exe /
+  g:rtl_ghdl_exe / g:rtl_ctags_cmd     executable names or full paths
+  g:rtl_lsp_autostart    1
+  g:rtl_lsp_command      '' (auto)   e.g. '/opt/verible/bin/verible-verilog-ls'
+  g:rtl_lsp_command_vhdl '' (auto)
+  g:rtl_lsp_timeout_ms   3000
+  g:rtl_lsp_debounce_ms  300
+  g:rtl_lsp_diagnostics  1
+  g:rtl_auto_end         1      Enter-after-begin handler
+  g:rtl_smart_tab        1      <Tab> completes after a word
+  g:rtl_clk_name / g:rtl_rst_name / g:rtl_inst_prefix   'clk' 'rst_n' 'u_'
+
+==============================================================================
+11. WHAT IS AND IS NOT SEMANTIC                               *rtl-ide-honesty*
+
+Semantic (from a tool that parses/elaborates the design):
+  - verilator / iverilog / ghdl diagnostics
+  - everything a language server answers (hover, definition, references,
+    symbols, rename, formatting, its diagnostics and completion)
+Text-level (pattern matching, fast and usually right for clean RTL, but
+not elaboration):
+  - the built-in tag indexer, ctags, port/parameter parsing for
+    completion and :RtlInstantiate, buffer declaration scans
+  - <Space>gr without a server (word search), <Space>gi, :RtlGrep
+  - the Enter-after-begin balance check and the comment toggler
+Nothing in this setup replaces simulation, synthesis or a sign-off lint.
+
+ vim:tw=78:ts=8:ft=help:norl:
